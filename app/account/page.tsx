@@ -257,7 +257,7 @@ export default function AccountPage() {
       const matchedProduct =
         getProductBySlug(item.productId) ||
         (item.slug ? getProductBySlug(item.slug) : undefined) ||
-        MELTI_PRODUCTS.find((p) => p.unitPrice === item.unitPrice) ||
+        MELTI_PRODUCTS.find((p) => p.price === item.unitPrice) ||
         MELTI_PRODUCTS[0];
 
       addItem(matchedProduct, item.quantity);
