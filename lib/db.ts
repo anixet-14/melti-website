@@ -85,3 +85,160 @@ export async function deleteOtp(email: string) {
     .collection<OtpRecord>('otps')
     .deleteOne({ email: email.trim().toLowerCase() });
 }
+
+// Append to lib/db.ts
+
+export interface OrderItemRecord {
+  productId: string;
+  slug: string;
+  name: string;
+  shortName: string;
+  packSize: string;
+  cocoaPercent: string;
+  unitPrice: number;
+  quantity: number;
+  imageUrl: string;
+}
+
+export interface ShippingAddressRecord {
+  fullName: string;
+  email: string;
+  phone: string;
+  line1: string;
+  city: string;
+  state: string;
+  pincode: string;
+}
+
+export interface OrderRecord {
+  orderId: string;
+  userId?: string;
+  customerEmail: string;
+  items: OrderItemRecord[];
+  subtotal: number;
+  discount: number;
+  shippingFee: number;
+  totalAmount: number;
+  couponCode: string | null;
+  paymentMethod: 'demo_upi' | 'demo_card' | 'demo_cod';
+  paymentStatus: 'paid_demo' | 'cod_confirmed';
+  orderStatus: 'confirmed' | 'packed' | 'dispatched' | 'delivered';
+  shippingAddress: ShippingAddressRecord;
+  createdAt: string;
+}
+
+export async function createOrder(
+  order: Omit<OrderRecord, 'orderId' | 'createdAt'>
+): Promise<OrderRecord> {
+  await ensureIndexes();
+  const db = await getDb();
+
+  const randomCode = Math.floor(1000 + Math.random() * 9000);
+  const orderId = `MLT-2026-${randomCode}`;
+
+  const doc: OrderRecord = {
+    ...order,
+    orderId,
+    customerEmail: order.customerEmail.trim().toLowerCase(),
+    createdAt: new Date().toISOString(),
+  };
+
+  await db.collection<OrderRecord>('orders').insertOne(doc);
+  return doc;
+}
+
+export async function findOrderById(
+  orderId: string
+): Promise<OrderRecord | null> {
+  await ensureIndexes();
+  const db = await getDb();
+  return db
+    .collection<OrderRecord>('orders')
+    .findOne({ orderId: orderId.trim() }, { projection: { _id: 0 } });
+}
+
+export async function findOrdersByEmail(
+  email: string
+): Promise<OrderRecord[]> {
+  await ensureIndexes();
+  const db = await getDb();
+  return db
+    .collection<OrderRecord>('orders')
+    .find(
+      { customerEmail: email.trim().toLowerCase() },
+      { projection: { _id: 0 } }
+    )
+    .sort({ createdAt: -1 })
+    .toArray();
+}
+
+// Append to lib/db.ts
+
+export interface SavedDeliveryAddress {
+  phone: string;
+  line1: string;
+  city: string;
+  state: string;
+  pincode: string;
+}
+
+export interface UserProfileRecord {
+  userId?: string;
+  name: string;
+  email: string;
+  tasteMood?: string;
+  defaultAddress?: SavedDeliveryAddress;
+  hasCompletedSurvey?: boolean;
+  createdAt?: string;
+}
+
+export async function findUserProfileByEmail(
+  email: string
+): Promise<UserProfileRecord | null> {
+  await ensureIndexes();
+  const db = await getDb();
+  const user = await db.collection('users').findOne(
+    { email: email.trim().toLowerCase() },
+    { projection: { _id: 0, passwordHash: 0, password: 0 } }
+  );
+  return (user as UserProfileRecord | null) || null;
+}
+
+export async function updateUserProfileByEmail(
+  email: string,
+  updates: {
+    name?: string;
+    tasteMood?: string;
+    defaultAddress?: SavedDeliveryAddress;
+  }
+): Promise<UserProfileRecord | null> {
+  await ensureIndexes();
+  const db = await getDb();
+  const cleanEmail = email.trim().toLowerCase();
+
+  const setFields: Record<string, unknown> = {
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (typeof updates.name === 'string' && updates.name.trim()) {
+    setFields.name = updates.name.trim();
+  }
+  if (typeof updates.tasteMood === 'string') {
+    setFields.tasteMood = updates.tasteMood.trim();
+  }
+  if (updates.defaultAddress) {
+    setFields.defaultAddress = {
+      phone: updates.defaultAddress.phone.trim(),
+      line1: updates.defaultAddress.line1.trim(),
+      city: updates.defaultAddress.city.trim(),
+      state: updates.defaultAddress.state.trim() || 'Karnataka',
+      pincode: updates.defaultAddress.pincode.trim(),
+    };
+  }
+
+  await db
+    .collection('users')
+    .updateOne({ email: cleanEmail }, { $set: setFields });
+
+  return findUserProfileByEmail(cleanEmail);
+}

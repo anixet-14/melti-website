@@ -1,7 +1,7 @@
 // app/components/navigation/Navbar.tsx
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -14,13 +14,16 @@ import {
   X,
   Sparkles,
   ArrowRight,
+  Plus,
+  Minus,
+  Trash2,
+  Tag,
 } from 'lucide-react';
 import { MELTI_PRODUCTS } from '@/app/config/productsConfig';
+import { useCart } from '@/app/context/CartContext';
 
 interface NavbarProps {
-  /** Optional external cart count if lifted to page/context state later */
   cartCount?: number;
-  /** Optional custom handler when the bag icon is clicked */
   onOpenCart?: () => void;
 }
 
@@ -175,6 +178,7 @@ const NAVBAR_CSS = `
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
+  text-decoration: none;
 }
 
 .mnav-cta {
@@ -334,11 +338,11 @@ const NAVBAR_CSS = `
 
 .mnav-drawer {
   width: 100%;
-  max-width: 400px;
+  max-width: 420px;
   height: 100%;
   background: linear-gradient(180deg, #231208 0%, #120B06 100%);
   border-left: 1px solid rgba(212, 163, 115, 0.25);
-  padding: 28px 24px;
+  padding: 24px 22px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -347,20 +351,40 @@ const NAVBAR_CSS = `
 }
 `;
 
-export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
+function NavbarContent({ onOpenCart }: NavbarProps) {
   const pathname = usePathname();
+  const {
+    items,
+    totalItems,
+    subtotal,
+    discount,
+    shippingFee,
+    totalAmount,
+    freeShippingThreshold,
+    amountToFreeShipping,
+    couponCode,
+    couponError,
+    isBagOpen,
+    openBag,
+    closeBag,
+    addItem,
+    updateQuantity,
+    removeItem,
+    applyCoupon,
+    removeCoupon,
+  } = useCart();
+
   const [isScrolled, setIsScrolled] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [activeSection, setActiveSection] = useState<string>('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [bagOpen, setBagOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [promoInput, setPromoInput] = useState('');
   const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync authenticated user from HTTP-only session cookie
   useEffect(() => {
     let active = true;
     fetch('/api/auth/me', { cache: 'no-store' })
@@ -377,7 +401,6 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
     };
   }, [pathname]);
 
-  // Track scroll depth, sticky glass state, and active section highlight
   useEffect(() => {
     const handleScroll = () => {
       const y = window.scrollY;
@@ -406,7 +429,6 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Close mobile menu on desktop resize
   useEffect(() => {
     const onResize = () => {
       if (window.innerWidth > 960) setMobileMenuOpen(false);
@@ -415,25 +437,23 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Keyboard shortcuts: Cmd/Ctrl + K to search, Escape to close overlays
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setSearchOpen((prev) => !prev);
-        setBagOpen(false);
+        closeBag();
         setMobileMenuOpen(false);
       } else if (e.key === 'Escape') {
         setSearchOpen(false);
-        setBagOpen(false);
+        closeBag();
         setMobileMenuOpen(false);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [closeBag]);
 
-  // Focus input when search opens
   useEffect(() => {
     if (searchOpen) {
       setTimeout(() => searchInputRef.current?.focus(), 60);
@@ -442,7 +462,6 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
     }
   }, [searchOpen]);
 
-  // Smoothly scroll to in-page sections even if hash is already active
   const handleAnchorClick = (
     e: React.MouseEvent<HTMLAnchorElement>,
     href: string
@@ -455,7 +474,7 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
       window.history.pushState(null, '', href);
       setMobileMenuOpen(false);
       setSearchOpen(false);
-      setBagOpen(false);
+      closeBag();
     }
   };
 
@@ -473,6 +492,7 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
     if (!q) return true;
     return (
       p.name?.toLowerCase().includes(q) ||
+      p.packSize?.toLowerCase().includes(q) ||
       p.tagline?.toLowerCase().includes(q) ||
       p.cocoaPercent?.toLowerCase().includes(q) ||
       (Array.isArray(p.tastingNotes) &&
@@ -484,11 +504,22 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
     if (onOpenCart) {
       onOpenCart();
     } else {
-      setBagOpen(true);
+      openBag();
+    }
+  };
+
+  const handlePromoSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (applyCoupon(promoInput)) {
+      setPromoInput('');
     }
   };
 
   const firstName = currentUser?.name?.trim().split(' ')[0] || 'Member';
+  const shippingPercent = Math.min(
+    100,
+    Math.round(((subtotal - discount) / freeShippingThreshold) * 100)
+  );
 
   return (
     <>
@@ -521,7 +552,7 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
           }}
         >
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-            <Sparkles size={11} /> Free Insulated Shipping Above ₹999 • Use Code{' '}
+            <Sparkles size={11} /> 32% Real Cocoa • 20g Sachet at ₹32 | 200g Family Pack at ₹256 • Code{' '}
             <strong style={{ color: CREAM }}>FIRSTPOUR15</strong>
           </span>
         </div>
@@ -531,7 +562,6 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
           className="mnav-inner"
           style={{ padding: isScrolled ? '13px 24px' : '17px 24px' }}
         >
-          {/* Left: Brand Wordmark with Molten Gold Dot */}
           <Link href="/" className="mnav-brand" aria-label="Mèlti Home">
             <span className="mnav-brand-text">
               MÈLTI
@@ -546,7 +576,6 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
             </span>
           </Link>
 
-          {/* Right: Navigation Links + Divider + Utility Controls */}
           <div className="mnav-desktop" style={{ alignItems: 'center', gap: '34px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '30px' }}>
               {LINKS.map((l) => (
@@ -567,8 +596,8 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
               <button
                 onClick={() => setSearchOpen(true)}
                 className="mnav-icon-btn"
-                aria-label="Search chocolate blends"
-                title="Search blends (⌘K)"
+                aria-label="Search chocolate packs"
+                title="Search packs (⌘K)"
               >
                 <Search size={16} strokeWidth={2.1} />
               </button>
@@ -599,16 +628,16 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
                     boxShadow: `0 0 0 2px ${COCOA_DEEP}`,
                   }}
                 >
-                  {cartCount}
+                  {totalItems}
                 </span>
               </button>
 
               {currentUser ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span className="mnav-user-pill" title={currentUser.email}>
+                  <Link href="/account" className="mnav-user-pill" title={currentUser.email}>
                     <User size={14} strokeWidth={2.2} />
                     Hi, {firstName}
-                  </span>
+                  </Link>
                   <button
                     onClick={handleLogout}
                     className="mnav-icon-btn"
@@ -643,23 +672,19 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
                 </Link>
               )}
 
-              <a
-                href={pathname === '/' ? '#products' : '/#products'}
-                onClick={(e) => handleAnchorClick(e, '#products')}
-                className="mnav-cta"
-              >
+              <Link href="/products" className="mnav-cta">
                 Shop Now
-              </a>
+              </Link>
             </div>
           </div>
 
-          {/* Mobile Controls (Search + Bag + Burger) */}
+          {/* Mobile Controls */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} className="mnav-mobile-panel">
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
                 onClick={() => setSearchOpen(true)}
                 className="mnav-icon-btn"
-                aria-label="Search blends"
+                aria-label="Search packs"
               >
                 <Search size={17} />
               </button>
@@ -688,7 +713,7 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
                     justifyContent: 'center',
                   }}
                 >
-                  {cartCount}
+                  {totalItems}
                 </span>
               </button>
 
@@ -750,9 +775,13 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
               {currentUser ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span className="mnav-user-pill">
+                  <Link
+                    href="/account"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="mnav-user-pill"
+                  >
                     <User size={14} /> Hi, {firstName}
-                  </span>
+                  </Link>
                   <button
                     onClick={handleLogout}
                     style={{
@@ -811,23 +840,23 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
                   textTransform: 'uppercase',
                 }}
               >
-                <ShoppingBag size={16} /> Bag ({cartCount})
+                <ShoppingBag size={16} /> Bag ({totalItems})
               </button>
             </div>
 
-            <a
-              href={pathname === '/' ? '#products' : '/#products'}
-              onClick={(e) => handleAnchorClick(e, '#products')}
+            <Link
+              href="/products"
+              onClick={() => setMobileMenuOpen(false)}
               className="mnav-cta"
               style={{ width: '100%', padding: '13px 0', marginTop: '4px' }}
             >
-              Explore Blends
-            </a>
+              Shop Classic Packs
+            </Link>
           </div>
         </div>
       </nav>
 
-      {/* Quick-Blend Search Overlay */}
+      {/* Quick-Pack Search Overlay */}
       <AnimatePresence>
         {searchOpen && (
           <motion.div
@@ -845,7 +874,7 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
               onClick={(e) => e.stopPropagation()}
               className="mnav-search-box"
               role="dialog"
-              aria-label="Search Melti chocolate blends"
+              aria-label="Search Melti hot chocolate packs"
             >
               <div className="mnav-search-input-row">
                 <Search size={18} style={{ color: GOLD, flexShrink: 0 }} />
@@ -854,7 +883,7 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search blends, cocoa % or tasting notes (e.g. Hazelnut, 72%, Cardamom)..."
+                  placeholder="Search 20g Sachet, 200g Family Pack, or 32% Cocoa..."
                   className="mnav-search-input"
                 />
                 <button
@@ -870,31 +899,31 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
               <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
                 {matchingProducts.length > 0 ? (
                   matchingProducts.map((prod) => (
-                    <a
+                    <Link
                       key={prod.id}
-                      href={pathname === '/' ? '#products' : '/#products'}
-                      onClick={(e) => handleAnchorClick(e, '#products')}
+                      href={`/products/${prod.slug}`}
+                      onClick={() => setSearchOpen(false)}
                       className="mnav-search-result"
                     >
                       <div>
                         <div style={{ fontSize: '14px', fontWeight: 800, color: CREAM }}>
                           {prod.name}{' '}
                           <span style={{ fontSize: '11px', color: GOLD_LIGHT, fontWeight: 700 }}>
-                            ({prod.cocoaPercent})
+                            ({prod.cocoaPercent} Cocoa)
                           </span>
                         </div>
                         <div style={{ fontSize: '12px', color: 'rgba(235, 197, 147, 0.7)', marginTop: '2px' }}>
-                          {prod.tastingNotes.join(' • ')}
+                          {prod.servings} • {prod.tastingNotes.join(' • ')}
                         </div>
                       </div>
-                      <span style={{ fontSize: '13px', fontWeight: 900, color: GOLD_LIGHT }}>
-                        ₹{prod.price200g}
+                      <span style={{ fontSize: '14px', fontWeight: 900, color: GOLD_LIGHT }}>
+                        ₹{prod.price}
                       </span>
-                    </a>
+                    </Link>
                   ))
                 ) : (
                   <div style={{ padding: '28px 22px', textAlign: 'center', fontSize: '13px', color: 'rgba(235, 197, 147, 0.7)' }}>
-                    No blends matched &ldquo;{query}&rdquo;. Try searching 72%, Caramel, or Spiced.
+                    No packs matched &ldquo;{query}&rdquo;. Try searching 20g, 200g, or 32%.
                   </div>
                 )}
               </div>
@@ -903,14 +932,14 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
         )}
       </AnimatePresence>
 
-      {/* Slide-Over Pour Bag Drawer */}
+      {/* Live Slide-Over Pour Bag Drawer */}
       <AnimatePresence>
-        {bagOpen && (
+        {isBagOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setBagOpen(false)}
+            onClick={closeBag}
             className="mnav-drawer-backdrop"
           >
             <motion.aside
@@ -922,26 +951,27 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
               className="mnav-drawer"
               aria-label="Your Pour Bag"
             >
-              <div>
+              {/* Top Section */}
+              <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    paddingBottom: '18px',
+                    paddingBottom: '16px',
                     borderBottom: '1px solid rgba(212, 163, 115, 0.18)',
                   }}
                 >
                   <div>
                     <div style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase', color: GOLD }}>
-                      Small-Batch Cart
+                      32% Classic Couverture
                     </div>
                     <h3 style={{ fontSize: '20px', fontWeight: 900, margin: '2px 0 0' }}>
-                      Your Pour Bag ({cartCount})
+                      Your Pour Bag ({totalItems})
                     </h3>
                   </div>
                   <button
-                    onClick={() => setBagOpen(false)}
+                    onClick={closeBag}
                     aria-label="Close bag"
                     className="mnav-icon-btn"
                   >
@@ -949,18 +979,20 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
                   </button>
                 </div>
 
-                {/* Free Shipping Progress Indicator */}
+                {/* Free Shipping Progress Meter */}
                 <div
                   style={{
-                    marginTop: '18px',
-                    padding: '14px',
-                    borderRadius: '16px',
+                    marginTop: '14px',
+                    padding: '12px 14px',
+                    borderRadius: '15px',
                     background: 'rgba(212, 163, 115, 0.08)',
                     border: '1px solid rgba(212, 163, 115, 0.2)',
                   }}
                 >
                   <div style={{ fontSize: '11.5px', fontWeight: 700, color: GOLD_LIGHT }}>
-                    Add ₹999+ for complimentary cold-pack insulated shipping
+                    {amountToFreeShipping > 0
+                      ? `Add ₹${amountToFreeShipping} more for free insulated shipping`
+                      : 'Unlocked! Free cold-pack insulated shipping'}
                   </div>
                   <div
                     style={{
@@ -973,7 +1005,7 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
                   >
                     <div
                       style={{
-                        width: cartCount > 0 ? '65%' : '0%',
+                        width: `${shippingPercent}%`,
                         height: '100%',
                         background: `linear-gradient(90deg, ${GOLD}, ${GOLD_LIGHT})`,
                         transition: 'width 0.35s ease',
@@ -982,45 +1014,307 @@ export default function Navbar({ cartCount = 0, onOpenCart }: NavbarProps) {
                   </div>
                 </div>
 
-                {/* Empty Bag State */}
-                <div style={{ textAlign: 'center', padding: '56px 12px' }}>
-                  <div
-                    style={{
-                      width: '54px',
-                      height: '54px',
-                      borderRadius: '9999px',
-                      margin: '0 auto 14px',
-                      background: 'rgba(212, 163, 115, 0.1)',
-                      border: '1px solid rgba(212, 163, 115, 0.28)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: GOLD_LIGHT,
-                    }}
-                  >
-                    <ShoppingBag size={22} />
+                {/* Cart Items List or Empty State */}
+                {items.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '44px 12px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <div
+                      style={{
+                        width: '52px',
+                        height: '52px',
+                        borderRadius: '9999px',
+                        margin: '0 auto 14px',
+                        background: 'rgba(212, 163, 115, 0.1)',
+                        border: '1px solid rgba(212, 163, 115, 0.28)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: GOLD_LIGHT,
+                      }}
+                    >
+                      <ShoppingBag size={22} />
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: CREAM }}>
+                      Your mug is waiting
+                    </div>
+                    <p style={{ fontSize: '12.5px', color: 'rgba(235, 197, 147, 0.72)', marginTop: '6px', lineHeight: 1.5 }}>
+                      Quick-add a 20g single sachet or a 200g family pack below.
+                    </p>
+
+                    {/* Quick 1-Tap Add Cards for the 2 SKUs */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '18px' }}>
+                      {MELTI_PRODUCTS.map((p) => (
+                        <div
+                          key={p.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '11px 14px',
+                            borderRadius: '14px',
+                            background: 'rgba(255, 248, 240, 0.04)',
+                            border: '1px solid rgba(212, 163, 115, 0.2)',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: '13px', fontWeight: 800, color: CREAM }}>
+                              {p.shortName}
+                            </div>
+                            <div style={{ fontSize: '11px', color: GOLD_LIGHT }}>
+                              {p.cocoaPercent} Cocoa • ₹{p.price}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => addItem(p, 1)}
+                            style={{
+                              padding: '7px 14px',
+                              borderRadius: '9999px',
+                              border: 'none',
+                              background: GOLD_LIGHT,
+                              color: COCOA,
+                              fontSize: '11px',
+                              fontWeight: 900,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            + Add
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div style={{ fontSize: '16px', fontWeight: 800, color: CREAM }}>
-                    Your mug is waiting
+                ) : (
+                  <div style={{ flex: 1, overflowY: 'auto', marginTop: '14px', paddingRight: '2px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {items.map((item) => (
+                      <div
+                        key={item.productId}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                          padding: '12px',
+                          borderRadius: '16px',
+                          background: 'rgba(255, 248, 240, 0.04)',
+                          border: '1px solid rgba(212, 163, 115, 0.2)',
+                        }}
+                      >
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name}
+                          style={{
+                            width: '50px',
+                            height: '58px',
+                            objectFit: 'contain',
+                            borderRadius: '10px',
+                            filter: 'drop-shadow(0 6px 12px rgba(0,0,0,0.5))',
+                          }}
+                        />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '13.5px', fontWeight: 800, color: CREAM }}>
+                            {item.shortName}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'rgba(235, 197, 147, 0.72)' }}>
+                            {item.cocoaPercent} Cocoa • ₹{item.unitPrice} each
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                            <button
+                              type="button"
+                              onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+                              aria-label="Decrease quantity"
+                              style={{
+                                width: '24px',
+                                height: '24px',
+                                borderRadius: '9999px',
+                                border: '1px solid rgba(212, 163, 115, 0.35)',
+                                background: 'transparent',
+                                color: CREAM,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <Minus size={12} />
+                            </button>
+                            <span style={{ fontSize: '13px', fontWeight: 800, minWidth: '18px', textAlign: 'center' }}>
+                              {item.quantity}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                              aria-label="Increase quantity"
+                              style={{
+                                width: '24px',
+                                height: '24px',
+                                borderRadius: '9999px',
+                                border: '1px solid rgba(212, 163, 115, 0.35)',
+                                background: 'transparent',
+                                color: CREAM,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <Plus size={12} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '10px' }}>
+                          <button
+                            type="button"
+                            onClick={() => removeItem(item.productId)}
+                            aria-label="Remove item"
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'rgba(235, 197, 147, 0.5)',
+                              cursor: 'pointer',
+                              padding: 0,
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                          <span style={{ fontSize: '14px', fontWeight: 900, color: GOLD_LIGHT }}>
+                            ₹{item.unitPrice * item.quantity}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <p style={{ fontSize: '13px', color: 'rgba(235, 197, 147, 0.72)', marginTop: '6px', lineHeight: 1.55 }}>
-                    Pick a single-origin couverture tin to start building your hot chocolate ritual.
-                  </p>
-                </div>
+                )}
               </div>
 
-              <a
-                href={pathname === '/' ? '#products' : '/#products'}
-                onClick={(e) => handleAnchorClick(e, '#products')}
-                className="mnav-cta"
-                style={{ width: '100%', padding: '14px 0' }}
-              >
-                Browse Signature Blends
-              </a>
+              {/* Bottom Totals + Coupon + Checkout CTA */}
+              {items.length > 0 && (
+                <div style={{ paddingTop: '14px', borderTop: '1px solid rgba(212, 163, 115, 0.2)' }}>
+                  {/* Promo Code Input */}
+                  {couponCode ? (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 12px',
+                        borderRadius: '10px',
+                        background: 'rgba(200, 109, 81, 0.16)',
+                        border: '1px dashed #C86D51',
+                        marginBottom: '12px',
+                        fontSize: '12px',
+                        color: GOLD_LIGHT,
+                      }}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 800 }}>
+                        <Tag size={13} /> {couponCode} applied (-₹{discount})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={removeCoupon}
+                        style={{ background: 'transparent', border: 'none', color: CREAM, cursor: 'pointer', fontSize: '11px', textDecoration: 'underline' }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <form onSubmit={handlePromoSubmit} style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                      <input
+                        type="text"
+                        value={promoInput}
+                        onChange={(e) => setPromoInput(e.target.value)}
+                        placeholder="Code: FIRSTPOUR15 or MELTI150"
+                        style={{
+                          flex: 1,
+                          padding: '9px 12px',
+                          borderRadius: '10px',
+                          background: 'rgba(255, 248, 240, 0.06)',
+                          border: '1px solid rgba(212, 163, 115, 0.25)',
+                          color: CREAM,
+                          fontSize: '12px',
+                          outline: 'none',
+                        }}
+                      />
+                      <button
+                        type="submit"
+                        style={{
+                          padding: '0 14px',
+                          borderRadius: '10px',
+                          border: '1px solid rgba(212, 163, 115, 0.4)',
+                          background: 'rgba(212, 163, 115, 0.15)',
+                          color: GOLD_LIGHT,
+                          fontSize: '11px',
+                          fontWeight: 800,
+                          textTransform: 'uppercase',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Apply
+                      </button>
+                    </form>
+                  )}
+
+                  {couponError && (
+                    <div style={{ fontSize: '11px', color: '#F6B8A6', marginBottom: '8px' }}>
+                      {couponError}
+                    </div>
+                  )}
+
+                  {/* Price Summary */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '12.5px', marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'rgba(255, 248, 240, 0.72)' }}>
+                      <span>Subtotal</span>
+                      <span>₹{subtotal}</span>
+                    </div>
+                    {discount > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#E89A6C' }}>
+                        <span>Promo Discount</span>
+                        <span>-₹{discount}</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'rgba(255, 248, 240, 0.72)' }}>
+                      <span>Insulated Shipping</span>
+                      <span>{shippingFee === 0 ? 'FREE' : `₹${shippingFee}`}</span>
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        fontSize: '15px',
+                        fontWeight: 900,
+                        color: CREAM,
+                        paddingTop: '6px',
+                        borderTop: '1px solid rgba(212, 163, 115, 0.14)',
+                      }}
+                    >
+                      <span>Total</span>
+                      <span style={{ color: GOLD_LIGHT }}>₹{totalAmount}</span>
+                    </div>
+                  </div>
+
+                  <Link
+                    href="/checkout"
+                    onClick={closeBag}
+                    className="mnav-cta"
+                    style={{ width: '100%', padding: '14px 0' }}
+                  >
+                    Proceed to Checkout • ₹{totalAmount}
+                  </Link>
+                </div>
+              )}
             </motion.aside>
           </motion.div>
         )}
       </AnimatePresence>
     </>
+  );
+}
+
+export default function Navbar(props: NavbarProps) {
+  return (
+    <Suspense fallback={<div style={{ height: '76px' }} />}>
+      <NavbarContent {...props} />
+    </Suspense>
   );
 }
