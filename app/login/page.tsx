@@ -4,7 +4,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Mail, Lock, User, Sparkles, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Mail, Lock, User, Sparkles, CheckCircle2, ArrowRight } from 'lucide-react';
 
 const TASTE_MOODS = [
   '72% Midnight Velvet',
@@ -17,6 +17,7 @@ export default function AuthPage() {
   const router = useRouter();
   const [mode, setMode] = useState<'signup' | 'login'>('signup');
   const [signupStep, setSignupStep] = useState<'details' | 'otp'>('details');
+  const [signupComplete, setSignupComplete] = useState(false);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -55,6 +56,7 @@ export default function AuthPage() {
   const handleVerifyAndRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setInfo('');
     setLoading(true);
 
     try {
@@ -66,8 +68,13 @@ export default function AuthPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'OTP verification failed');
 
-      router.push('/');
-      router.refresh();
+      setSignupComplete(true);
+      setInfo(data.message || 'Check your inbox for your welcome note & taste survey');
+
+      setTimeout(() => {
+        router.push('/');
+        router.refresh();
+      }, 2200);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Verification failed.');
     } finally {
@@ -180,6 +187,7 @@ export default function AuthPage() {
                 onClick={() => {
                   setMode(tab);
                   setSignupStep('details');
+                  setSignupComplete(false);
                   setError('');
                   setInfo('');
                 }}
@@ -219,24 +227,61 @@ export default function AuthPage() {
 
           {info && (
             <div
+              role="status"
               style={{
-                padding: '11px 14px',
+                padding: '12px 14px',
                 borderRadius: '12px',
-                background: 'rgba(212, 163, 115, 0.14)',
-                border: '1px solid rgba(212, 163, 115, 0.4)',
+                background: 'rgba(212, 163, 115, 0.16)',
+                border: '1px solid rgba(235, 197, 147, 0.45)',
                 color: '#EBC593',
-                fontSize: '12.5px',
+                fontSize: '13px',
+                fontWeight: 700,
                 marginBottom: '16px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
+                gap: '9px',
               }}
             >
-              <CheckCircle2 size={16} /> {info}
+              <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
+              <span>{info}</span>
             </div>
           )}
 
-          {mode === 'signup' && signupStep === 'details' && (
+          {mode === 'signup' && signupComplete && (
+            <div style={{ textAlign: 'center', paddingTop: '6px' }}>
+              <p style={{ fontSize: '13px', color: 'rgba(255, 248, 240, 0.75)', marginBottom: '16px' }}>
+                Taking you into the Pour Bar...
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  router.push('/');
+                  router.refresh();
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  width: '100%',
+                  padding: '14px',
+                  borderRadius: '9999px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 900,
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  color: '#1A120B',
+                  background: 'linear-gradient(135deg, #EBC593 0%, #D4A373 60%, #B9824F 100%)',
+                }}
+              >
+                Enter Pour Bar <ArrowRight size={15} />
+              </button>
+            </div>
+          )}
+
+          {mode === 'signup' && !signupComplete && signupStep === 'details' && (
             <form onSubmit={handleSendOtp} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ position: 'relative' }}>
                 <User size={16} style={{ position: 'absolute', left: '14px', top: '15px', color: '#D4A373' }} />
@@ -276,7 +321,17 @@ export default function AuthPage() {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#D4A373', marginBottom: '6px' }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                    color: '#D4A373',
+                    marginBottom: '6px',
+                  }}
+                >
                   Pick Your Cocoa Mood
                 </label>
                 <select
@@ -314,7 +369,7 @@ export default function AuthPage() {
             </form>
           )}
 
-          {mode === 'signup' && signupStep === 'otp' && (
+          {mode === 'signup' && !signupComplete && signupStep === 'otp' && (
             <form onSubmit={handleVerifyAndRegister} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <input
                 type="text"

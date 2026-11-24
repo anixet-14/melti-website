@@ -9,7 +9,7 @@ import {
   getOtp,
   incrementOtpAttempts,
 } from '@/lib/db';
-import { sendWelcomeEmail } from '@/lib/brevo';
+import { subscribeContactToBrevo } from '@/lib/brevo';
 import { createSessionCookie } from '@/lib/session';
 
 export async function POST(req: Request) {
@@ -17,7 +17,9 @@ export async function POST(req: Request) {
     const { email, otp, name, password, tasteMood } = await req.json();
     const normalizedEmail = String(email || '').trim().toLowerCase();
     const cleanOtp = String(otp || '').trim();
-    const cleanName = String(name || '').trim() || normalizedEmail.split('@')[0];
+    const rawName = String(name || '').trim();
+    const cleanName = rawName || normalizedEmail.split('@')[0];
+    const firstName = (rawName ? rawName.split(/\s+/)[0] : '') || cleanName;
     const cleanPassword = String(password || '');
     const selectedMood = String(tasteMood || '72% Midnight Velvet');
 
@@ -75,8 +77,15 @@ export async function POST(req: Request) {
       createdAt: new Date().toISOString(),
     });
 
-    // Send Brevo Welcome Email + Sync Contact Attributes
-    await sendWelcomeEmail(newUser.email, newUser.name, newUser.tasteMood);
+    // Sync contact to Brevo List 3 with FIRSTNAME only (triggers automated welcome flow)
+    const brevoResult = await subscribeContactToBrevo({
+      email: newUser.email,
+      firstName,
+    });
+
+    if (!brevoResult.ok) {
+      console.error('[Verify OTP] Brevo List 3 sync failed:', brevoResult.error);
+    }
 
     // Issue login session cookie
     await createSessionCookie({
@@ -85,10 +94,14 @@ export async function POST(req: Request) {
       name: newUser.name,
     });
 
-    return NextResponse.json({
-      ok: true,
-      user: { id: newUser.id, name: newUser.name, email: newUser.email },
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        message: 'Check your inbox for your welcome note & taste survey',
+        user: { id: newUser.id, name: newUser.name, email: newUser.email },
+      },
+      { status: 201 }
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Verification failed.';
     return NextResponse.json({ error: message }, { status: 500 });
