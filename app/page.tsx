@@ -40,7 +40,7 @@ export default function Home() {
       {/* 2. Interactive Survey Mascot */}
       {showSurvey && (
         <SurveyMascot
-          surveyUrl="https://forms.gle/your-survey-link-here"
+          surveyUrl="https://survey-ecru-pi.vercel.app/"
           onDismiss={() => setShowSurvey(false)}
         />
       )}
